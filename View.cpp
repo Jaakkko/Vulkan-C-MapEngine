@@ -30,6 +30,15 @@ void View::zoom(float scaleFactor, float winX, float winY) {
     updateViewMatrix();
 }
 
+void View::translate(float winDX, float winDY) {
+    auto r = windowToMapMatrix * glm::mat2x4(
+            glm::vec4(0, 0, 0, 1),
+            glm::vec4(winDX, winDY, 0, 1)
+    );
+    center = center + glm::column(r, 0).xy - glm::column(r, 1).xy;
+    updateViewMatrix();
+}
+
 std::vector<ViewportTile> View::getTiles() {
     // TODO: optimize
 
@@ -66,8 +75,7 @@ std::vector<ViewportTile> View::getTiles() {
             maxDiffVec.y = 0;
             maxDiff = maxDiffVec.x;
             pixels = glm::length(vulkanToWindow * viewMatrix * glm::vec4(maxDiffVec, 0, 1));
-        }
-        else {
+        } else {
             maxDiffVec.x = 0;
             maxDiff = maxDiffVec.y;
             pixels = glm::length(vulkanToWindow * viewMatrix * glm::vec4(maxDiffVec, 0, 1));

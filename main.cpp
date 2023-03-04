@@ -15,8 +15,13 @@
 
 
 void main_throws() {
+    struct MousePos {
+        double winX;
+        double winY;
+    };
     struct WindowContext {
-        View* view;
+        View *view;
+        std::optional<MousePos> lastMousePos;
     } windowContext{};
 
     glfwInit();
@@ -31,27 +36,37 @@ void main_throws() {
             glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
 
-    glfwSetScrollCallback(window, [](GLFWwindow* window, double xoffset, double yoffset){
-        auto context = static_cast<WindowContext*>(glfwGetWindowUserPointer(window));
-        float scaleFactor = 1 - static_cast<float>(yoffset) * .1f;
+    glfwSetCursorPosCallback(window, [](GLFWwindow *window, double xpos, double ypos) {
+        auto context = static_cast<WindowContext *>(glfwGetWindowUserPointer(window));
+        double winX, winY;
+        glfwGetCursorPos(window, &winX, &winY);
+        if (context->lastMousePos.has_value() && GLFW_PRESS == glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT)) {
+            auto& mousePos = context->lastMousePos.value();
+            context->view->translate(static_cast<float>(winX - mousePos.winX), static_cast<float>(winY - mousePos.winY));
+        }
+        context->lastMousePos = {winX,winY};
+    });
+
+    glfwSetScrollCallback(window, [](GLFWwindow *window, double xoffset, double yoffset) {
+        auto context = static_cast<WindowContext *>(glfwGetWindowUserPointer(window));
+        float scaleFactor = 1 - static_cast<float>(yoffset) * .01f;
 
         double winX, winY;
         glfwGetCursorPos(window, &winX, &winY);
         context->view->zoom(scaleFactor, static_cast<float>(winX), static_cast<float>(winY));
     });
 
-    VulkanRenderer renderer([=](VkInstance instance, VkSurfaceKHR* surface){
+    VulkanRenderer renderer([=](VkInstance instance, VkSurfaceKHR *surface) {
         VkResult result;
         if ((result = glfwCreateWindowSurface(instance, window, nullptr, surface)) != VK_SUCCESS) {
             std::stringstream ss;
             ss << "failed to create window surface! code = ";
             ss << result;
             throw std::runtime_error(ss.str());
-        }
-        else {
+        } else {
             std::cout << "Surface created" << std::endl;
         }
-    }, [=](uint32_t* w, uint32_t* h){
+    }, [=](uint32_t *w, uint32_t *h) {
         int intWidth, intHeight;
         glfwGetWindowSize(window, &intWidth, &intHeight);
         *w = intWidth;
@@ -69,12 +84,13 @@ void main_throws() {
     std::vector<ViewportTile> tileList = view.getTiles();
 
     VulkanTile tile(renderer);
+    std::vector<ViewportTile> tileList = view.getTiles();
     std::forward_list<std::function<void(VkCommandBuffer)>> list = {
-        [&](VkCommandBuffer commandBuffer){
-            for (const auto& t : tileList) {
-                tile.render(commandBuffer, t.cx, t.cy, t.tileSide, view.getViewMatrix());
-            }
-        },
+            [&](VkCommandBuffer commandBuffer) {
+                for (const auto &t: tileList) {
+                    tile.render(commandBuffer, t.center.x, t.center.y, t.tileSide, view.getViewMatrix());
+                }
+            },
     };
 
     auto fpsStartTime = std::chrono::system_clock::now();

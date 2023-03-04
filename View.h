@@ -64,6 +64,7 @@ public:
     );
 
     void zoom(float scaleFactor, float winX, float winY);
+    void translate(float winDX, float winDY);
 
     [[nodiscard]] const glm::mat4 &getViewMatrix() const {
         return this->viewMatrix;
