@@ -3,7 +3,10 @@ project(MapEngine)
 
 set(CMAKE_CXX_STANDARD 20)
 
-add_compile_definitions(VK_USE_PLATFORM_WIN32_KHR)
+add_compile_definitions(
+        VK_USE_PLATFORM_WIN32_KHR
+        GLM_FORCE_SWIZZLE
+)
 
 include_directories(
         C:/VulkanSDK/1.3.239.0/Include

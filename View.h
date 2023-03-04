@@ -9,35 +9,40 @@
 #include <glm/glm.hpp>
 #include <glm/ext/matrix_transform.hpp>
 
-struct ViewportTile {
-    // in map coords
-    float cx;
-    float cy;
-    float tileSide;
-};
+typedef glm::highp_vec2 MapVec;
+typedef glm::highp_vec2 WindowVec;
 
-struct ViewInitDefault {
-    float cx, cy;
-    float angle;
-    float width, height;
-};
-struct ViewInitWithWindowSize {
-    float cx, cy;
-    float angle;
-    float windowWidth, windowHeight;
+struct ViewportTile {
+    MapVec center;
+    float tileSide;
 };
 
 class View {
 private:
-    float cx, cy;
+    MapVec center;
     float angle;
-    float width, height;
-    float windowWidth, windowHeight;
+    MapVec size; // zoom
+    WindowVec windowSize;
     glm::mat4 viewMatrix;
 
     void updateViewMatrix();
 
 public:
+    /**
+     * Camera
+     *
+     * x=-1 -> map's left border
+     * x=1 -> map's right border
+     * y=1 -> map's top border
+     * y=-1 -> map's bottom border
+     *
+     * @param cx center x in map units
+     * @param cy center y in map units
+     * @param angle view angle in radians
+     * @param width view width in map units
+     * @param windowWidth in pixels
+     * @param windowHeight in pixels
+     */
     explicit View(
             float cx,
             float cy,

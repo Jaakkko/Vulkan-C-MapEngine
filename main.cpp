@@ -33,8 +33,7 @@ void main_throws() {
 
     glfwSetScrollCallback(window, [](GLFWwindow* window, double xoffset, double yoffset){
         auto context = static_cast<WindowContext*>(glfwGetWindowUserPointer(window));
-        float scaleFactor = 1 + static_cast<float>(yoffset) * .1f;
-        std::cout << scaleFactor << std::endl;
+        float scaleFactor = 1 - static_cast<float>(yoffset) * .1f;
 
         double winX, winY;
         glfwGetCursorPos(window, &winX, &winY);
@@ -67,11 +66,7 @@ void main_throws() {
     /*
      * Tile listan testailua
      */
-    std::vector<ViewportTile> tileList = {
-            {0, 0, 0.1},
-            {0.3, 0, 0.1},
-            {0.6, 0, 0.1},
-    };
+    std::vector<ViewportTile> tileList = view.getTiles();
 
     VulkanTile tile(renderer);
     std::forward_list<std::function<void(VkCommandBuffer)>> list = {
