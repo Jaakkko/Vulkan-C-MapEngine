@@ -8,6 +8,7 @@
 #include <iostream>
 #include <vector>
 #include <array>
+#include <functional>
 #include <glm/glm.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/gtc/matrix_access.hpp>
@@ -63,6 +64,7 @@ public:
             float windowHeight
     );
 
+    void setAngle(float angle);
     void zoom(float scaleFactor, float winX, float winY);
     void translate(float winDX, float winDY);
 

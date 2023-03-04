@@ -22,6 +22,11 @@ void View::updateViewMatrix() {
     windowToMapMatrix = vulkanToMap * windowToVulkan;
 }
 
+void View::setAngle(float angle) {
+    this->angle = angle;
+    updateViewMatrix();
+}
+
 void View::zoom(float scaleFactor, float winX, float winY) {
     MapVec map = (windowToMapMatrix * glm::vec4(winX, winY, 0, 1)).xy;
     center = scaleFactor * (center - map) + map;
@@ -54,42 +59,50 @@ std::vector<ViewportTile> View::getTiles() {
     const MapVec mapBottomRight = glm::column(mapCoords, 3).xy;
     const std::array<MapVec, 4> viewCorners = {mapTopLeft, mapTopRight, mapBottomLeft, mapBottomRight};
 
-    // find maximum horizontal and vertical difference
-    MapVec maxDiffVec(0, 0);
-    for (int j = 1; j < viewCorners.size(); j++) {
-        for (int i = 0; i < viewCorners.size(); i++) {
-            auto diff = glm::abs(viewCorners[j] - viewCorners[i]);
-            if (diff.x > maxDiffVec.x) maxDiffVec.x = diff.x;
-            if (diff.y > maxDiffVec.y) maxDiffVec.y = diff.y;
-        }
+    MapVec boundingBoxLeftTop(1, -1);
+    MapVec boundingBoxRightBottom(-1, 1);
+    for (auto viewCorner: viewCorners) {
+        boundingBoxLeftTop.x = std::min(boundingBoxLeftTop.x, viewCorner.x);
+        boundingBoxLeftTop.y = std::max(boundingBoxLeftTop.y, viewCorner.y);
+        boundingBoxRightBottom.x = std::max(boundingBoxRightBottom.x, viewCorner.x);
+        boundingBoxRightBottom.y = std::min(boundingBoxRightBottom.y, viewCorner.y);
     }
+    MapVec maxDiffVec(boundingBoxRightBottom.x - boundingBoxLeftTop.x, boundingBoxLeftTop.y - boundingBoxRightBottom.y);
+
 
     double pixels;
     double maxDiff;
-    double pixelSparsity;
     {
-        glm::mat4 vulkanToWindow(1);
-        vulkanToWindow = glm::scale(vulkanToWindow, glm::vec3(windowSize.x / 2, windowSize.y / 2, 1));
-        vulkanToWindow = glm::translate(vulkanToWindow, glm::vec3(1, 1, 0));
         if (maxDiffVec.x > maxDiffVec.y) {
             maxDiffVec.y = 0;
             maxDiff = maxDiffVec.x;
-            pixels = glm::length(vulkanToWindow * viewMatrix * glm::vec4(maxDiffVec, 0, 1));
         } else {
             maxDiffVec.x = 0;
             maxDiff = maxDiffVec.y;
-            pixels = glm::length(vulkanToWindow * viewMatrix * glm::vec4(maxDiffVec, 0, 1));
         }
-        pixelSparsity = maxDiff / pixels;
+
+        glm::mat4 vulkanToWindow(1);
+        vulkanToWindow = glm::scale(vulkanToWindow, glm::vec3(windowSize.x / 2, windowSize.y / 2, 1));
+        vulkanToWindow = glm::translate(vulkanToWindow, glm::vec3(1, 1, 0));
+        auto r = vulkanToWindow * viewMatrix * glm::mat2x4(
+                glm::vec4(maxDiffVec, 0, 1),
+                glm::vec4(0, 0, 0, 1)
+        );
+        pixels = glm::length(glm::column(r, 0) - glm::column(r, 1));
     }
 
-    const double tilesPerDimensionInMap = floor(2 / pixelSparsity / 256);
+    // TODO: Do not draw tiles that are not in the window
+    const int layer = floor(log2(2 / maxDiff * pixels / 256));
+    const auto tilesPerDimensionInMap = static_cast<double>(1U << layer);
     const auto tileSize = static_cast<float>(2 / tilesPerDimensionInMap);
-    const MapVec h = glm::normalize(mapTopRight - mapTopLeft) * tileSize;
-    const MapVec v = glm::normalize(mapBottomLeft - mapTopLeft) * tileSize;
-    const int hCount = static_cast<int>(glm::length(mapTopRight - mapTopLeft) / tileSize);
-    const int vCount = static_cast<int>(glm::length(mapBottomLeft - mapTopLeft) / tileSize);
-    MapVec tileTopLeft = mapTopLeft; // TODO: round to nearest tile's center
+    const int hCount = static_cast<int>(1 + ceil((boundingBoxRightBottom.x - boundingBoxLeftTop.x) / tileSize));
+    const int vCount = static_cast<int>(1 + ceil((boundingBoxLeftTop.y - boundingBoxRightBottom.y) / tileSize));
+    auto roundToNearestTileCenter = std::function < MapVec(MapVec) > ([=](MapVec a) {
+        return MapVec(
+                round((a.x + 1) / 2 * tilesPerDimensionInMap) / tilesPerDimensionInMap * 2 - 1,
+                round((a.y - 1) / 2 * tilesPerDimensionInMap) / tilesPerDimensionInMap * 2 + 1
+        );
+    });
     MapVec tileHorPos;
     MapVec tileVerPos = glm::vec2(0, 0);
 
@@ -97,10 +110,14 @@ std::vector<ViewportTile> View::getTiles() {
     for (int j = 0; j < vCount; j++) {
         tileHorPos = glm::vec2(0, 0);
         for (int i = 0; i < hCount; i++) {
-            tileHorPos += h;
-            output.push_back({tileTopLeft + tileHorPos + tileVerPos, tileSize});
+            // should be rounded
+            output.push_back({
+                                     roundToNearestTileCenter(boundingBoxLeftTop + tileHorPos + tileVerPos),
+                                     tileSize
+                             });
+            tileHorPos.x += tileSize;
         }
-        tileVerPos += v;
+        tileVerPos.y -= tileSize;
     }
 
     return output;
