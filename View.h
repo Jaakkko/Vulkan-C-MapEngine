@@ -5,9 +5,13 @@
 #ifndef MAPENGINE_VIEW_H
 #define MAPENGINE_VIEW_H
 
+#include <iostream>
 #include <vector>
+#include <array>
 #include <glm/glm.hpp>
 #include <glm/ext/matrix_transform.hpp>
+#include <glm/gtc/matrix_access.hpp>
+
 
 typedef glm::highp_vec2 MapVec;
 typedef glm::highp_vec2 WindowVec;
@@ -23,7 +27,14 @@ private:
     float angle;
     MapVec size; // zoom
     WindowVec windowSize;
-    glm::mat4 viewMatrix;
+
+    // map coord to vulkan coord
+    glm::mat4 viewMatrix{};
+
+    // window coord to map coord
+    glm::mat4 windowToMapMatrix{};
+
+    // map coord to window coord
 
     void updateViewMatrix();
 
@@ -54,7 +65,9 @@ public:
 
     void zoom(float scaleFactor, float winX, float winY);
 
-    [[nodiscard]] const glm::mat4 &getViewMatrix() const { return this->viewMatrix; };
+    [[nodiscard]] const glm::mat4 &getViewMatrix() const {
+        return this->viewMatrix;
+    };
 
     std::vector<ViewportTile> getTiles();
 };
