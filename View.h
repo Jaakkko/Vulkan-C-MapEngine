@@ -5,7 +5,6 @@
 #ifndef MAPENGINE_VIEW_H
 #define MAPENGINE_VIEW_H
 
-#include <iostream>
 #include <vector>
 #include <array>
 #include <functional>
@@ -17,9 +16,11 @@
 typedef glm::highp_vec2 MapVec;
 typedef glm::highp_vec2 WindowVec;
 
-struct ViewportTile {
+struct TileVec {
     MapVec center;
     float tileSide;
+    uint32_t row;
+    uint32_t column;
 };
 
 class View {
@@ -72,7 +73,7 @@ public:
         return this->viewMatrix;
     };
 
-    std::vector<ViewportTile> getTiles();
+    std::vector<TileVec> getTiles();
 };
 
 

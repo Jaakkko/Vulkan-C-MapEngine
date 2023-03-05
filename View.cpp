@@ -44,7 +44,7 @@ void View::translate(float winDX, float winDY) {
     updateViewMatrix();
 }
 
-std::vector<ViewportTile> View::getTiles() {
+std::vector<TileVec> View::getTiles() {
     // TODO: optimize
 
     const auto mapCoords = windowToMapMatrix * glm::mat4x4(
@@ -94,30 +94,33 @@ std::vector<ViewportTile> View::getTiles() {
     // TODO: Do not draw tiles that are not in the window
     const int layer = floor(log2(2 / maxDiff * pixels / 256));
     const auto tilesPerDimensionInMap = static_cast<double>(1U << layer);
-    const auto tileSize = static_cast<float>(2 / tilesPerDimensionInMap);
-    const int hCount = static_cast<int>(1 + ceil((boundingBoxRightBottom.x - boundingBoxLeftTop.x) / tileSize));
-    const int vCount = static_cast<int>(1 + ceil((boundingBoxLeftTop.y - boundingBoxRightBottom.y) / tileSize));
-    auto roundToNearestTileCenter = std::function < MapVec(MapVec) > ([=](MapVec a) {
-        return MapVec(
-                round((a.x + 1) / 2 * tilesPerDimensionInMap) / tilesPerDimensionInMap * 2 - 1,
-                round((a.y - 1) / 2 * tilesPerDimensionInMap) / tilesPerDimensionInMap * 2 + 1
-        );
-    });
+    const auto tileSide = static_cast<float>(2 / tilesPerDimensionInMap);
+    const int hCount = static_cast<int>(1 + ceil((boundingBoxRightBottom.x - boundingBoxLeftTop.x) / tileSide));
+    const int vCount = static_cast<int>(1 + ceil((boundingBoxLeftTop.y - boundingBoxRightBottom.y) / tileSide));
     MapVec tileHorPos;
     MapVec tileVerPos = glm::vec2(0, 0);
 
-    std::vector<ViewportTile> output;
+    std::vector<TileVec> output;
     for (int j = 0; j < vCount; j++) {
         tileHorPos = glm::vec2(0, 0);
         for (int i = 0; i < hCount; i++) {
-            // should be rounded
+            auto tilePos = boundingBoxLeftTop + tileHorPos + tileVerPos;
+            double column = round((tilePos.x + 1) / 2 * tilesPerDimensionInMap);
+            double row = round((tilePos.y - 1) / -2 * tilesPerDimensionInMap);
+            tilePos = MapVec(
+                    static_cast<float>(column / tilesPerDimensionInMap * 2.f - 1.f),
+                    static_cast<float>(row / tilesPerDimensionInMap * -2.f + 1.f)
+            );
+
             output.push_back({
-                                     roundToNearestTileCenter(boundingBoxLeftTop + tileHorPos + tileVerPos),
-                                     tileSize
+                                     tilePos,
+                                     tileSide,
+                                     static_cast<uint32_t>(row),
+                                     static_cast<uint32_t>(column)
                              });
-            tileHorPos.x += tileSize;
+            tileHorPos.x += tileSide;
         }
-        tileVerPos.y -= tileSize;
+        tileVerPos.y -= tileSide;
     }
 
     return output;
