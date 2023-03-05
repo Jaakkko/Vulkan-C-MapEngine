@@ -13,7 +13,7 @@ include_directories(
         C:/Libraries/glfw-3.3.8.bin.WIN64/include
 )
 
-add_executable(MapEngine main.cpp VulkanRenderer.cpp debug_messenger.cpp VulkanTile.cpp View.cpp View.h)
+add_executable(MapEngine main.cpp VulkanRenderer.cpp debug_messenger.cpp VulkanTile.cpp View.cpp)
 
 target_link_libraries(MapEngine
         C:/Libraries/glfw-3.3.8.bin.WIN64/lib-vc2022/glfw3.lib
