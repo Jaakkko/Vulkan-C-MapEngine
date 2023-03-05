@@ -94,7 +94,7 @@ VulkanRenderer::VulkanRenderer(const std::function<void(VkInstance instance, VkS
         }
     }
 
-    // Sort
+    // Sort. device with the lowest score wins
     std::array<int, 5> score{
             VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU,
             VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU,
@@ -540,6 +540,5 @@ void VulkanRenderer::nextFrame(const std::forward_list<std::function<void(VkComm
         throw std::runtime_error("failed to present swap chain swapchainImage!");
     }
 
-//     currentFrame = (currentFrame + 1) % static_cast<int>(records.size());
-    currentFrame = (currentFrame + 1) % 2;
+    currentFrame = (currentFrame + 1) % static_cast<int>(records.size());
 }

@@ -18,6 +18,11 @@
 #include "debug_messenger.h"
 
 class VulkanRenderer {
+private:
+    // disable copying
+    VulkanRenderer(const VulkanRenderer&);
+    VulkanRenderer& operator=(const VulkanRenderer&);
+
 public:
 
     VkDebugUtilsMessengerEXT debugMessenger{};

@@ -11,6 +11,7 @@ add_compile_definitions(
 include_directories(
         C:/VulkanSDK/1.3.239.0/Include
         C:/Libraries/glfw-3.3.8.bin.WIN64/include
+        C:/Libraries/stb-master
 )
 
 add_executable(MapEngine main.cpp VulkanRenderer.cpp debug_messenger.cpp VulkanTile.cpp View.cpp)
