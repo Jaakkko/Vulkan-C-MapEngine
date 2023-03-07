@@ -53,8 +53,9 @@ VulkanTile::VulkanTile(VulkanRenderer &renderer) {
         if (vkCreateBuffer(device, &createInfo, nullptr, buffer) != VK_SUCCESS) {
             throw std::runtime_error("failed to create buffer");
         }
+        auto buffer_val = *buffer;
         resourceStack->emplace([=]() {
-            vkDestroyBuffer(device, *buffer, nullptr);
+            vkDestroyBuffer(device, buffer_val, nullptr);
         });
 
         VkMemoryRequirements memoryRequirements;
@@ -321,9 +322,6 @@ VulkanTile::VulkanTile(VulkanRenderer &renderer) {
         if (vkAllocateDescriptorSets(device, &allocInfo, descriptorSets) != VK_SUCCESS) {
             throw std::runtime_error("failed to allocate descriptor sets!");
         }
-        renderer.resourceStack.emplace([=]() {
-            vkFreeDescriptorSets(device, descriptorPool, MAX_FRAMES_IN_FLIGHT, descriptorSets);
-        });
     }
 
     auto beginSingleTimeCommands = [=]() {
@@ -479,7 +477,6 @@ VulkanTile::VulkanTile(VulkanRenderer &renderer) {
             throw std::runtime_error("failed to create image!");
         }
         renderer.resourceStack.emplace([=]() {
-            transitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
             vkDestroyImage(device, textureImage, nullptr);
         });
 
@@ -494,6 +491,9 @@ VulkanTile::VulkanTile(VulkanRenderer &renderer) {
         if (vkAllocateMemory(device, &allocInfo, nullptr, &textureImageMemory) != VK_SUCCESS) {
             throw std::runtime_error("failed to allocate image memory!");
         }
+        renderer.resourceStack.emplace([=]() {
+            vkFreeMemory(device, textureImageMemory, nullptr);
+        });
 
         vkBindImageMemory(device, textureImage, textureImageMemory, 0);
 
