@@ -26,7 +26,7 @@ void main_throws() {
 
     int windowWidth, windowHeight;
     glfwGetWindowSize(window, &windowWidth, &windowHeight);
-    View view(0, 0, glm::radians(10.f), 2, static_cast<float>(windowWidth), static_cast<float>(windowHeight));
+    View view(0, 0, 0, 2, static_cast<float>(windowWidth), static_cast<float>(windowHeight));
     handleInput(window, &view);
 
     VulkanRenderer renderer([=](VkInstance instance, VkSurfaceKHR *surface) {
@@ -51,13 +51,12 @@ void main_throws() {
 
     auto fpsStartTime = std::chrono::system_clock::now();
     auto frames = 0;
-    float angle = 0;
     while (!glfwWindowShouldClose(window)) {
         frames++;
         auto now = std::chrono::system_clock::now();
         if (std::chrono::duration_cast<std::chrono::milliseconds>(now - fpsStartTime).count() > 1000) {
             fpsStartTime = now;
-            std::cout << frames << std::endl;
+            std::cout << "Frames: " << frames << std::endl;
             frames = 0;
         }
         std::vector<TileVec> tileList = view.getTiles();
@@ -69,7 +68,6 @@ void main_throws() {
                 },
         };
         //angle += 1;
-        view.setAngle(glm::radians(angle));
         renderer.nextFrame(list);
 
         // glfwPollEvents();

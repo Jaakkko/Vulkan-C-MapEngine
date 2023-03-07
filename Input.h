@@ -47,7 +47,12 @@ void handleInput(GLFWwindow *window, View* view) {
 
         double winX, winY;
         glfwGetCursorPos(window, &winX, &winY);
-        context->view->zoom(scaleFactor, static_cast<float>(winX), static_cast<float>(winY));
+        if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
+            context->view->rotate(static_cast<float>(glm::radians(yoffset * 4)), static_cast<float>(winX), static_cast<float>(winY));
+        }
+        else {
+            context->view->zoom(scaleFactor, static_cast<float>(winX), static_cast<float>(winY));
+        }
     });
 
     glfwSetWindowCloseCallback(window, [](GLFWwindow* window){

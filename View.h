@@ -8,13 +8,13 @@
 #include <vector>
 #include <array>
 #include <functional>
+#include <cmath>
 #include <glm/glm.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/gtc/matrix_access.hpp>
 
-
-typedef glm::highp_vec2 MapVec;
-typedef glm::highp_vec2 WindowVec;
+typedef glm::vec2 MapVec;
+typedef glm::vec2 WindowVec;
 
 struct TileVec {
     MapVec center;
@@ -36,9 +36,14 @@ private:
     // window coord to map coord
     glm::mat4 windowToMapMatrix{};
 
-    // map coord to window coord
+    void scale(float scaleFactor);
+    void boundingBox(MapVec& boundingBoxLeftTop, MapVec& boundingBoxRightBottom) const;
 
-    void updateViewMatrix();
+    void calculateViewMatrix();
+    void calculateWindowToMapMatrix();
+
+    void limitZoom(MapVec previousCenter, MapVec previousSize, float scaleFactor, MapVec zoomCenter);
+    void limitTranslation();
 
 public:
     /**
@@ -65,7 +70,7 @@ public:
             float windowHeight
     );
 
-    void setAngle(float angle);
+    void rotate(float deltaAngle, float winX, float winY);
     void zoom(float scaleFactor, float winX, float winY);
     void translate(float winDX, float winDY);
 

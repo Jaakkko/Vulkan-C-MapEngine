@@ -4,12 +4,78 @@
 
 #include "View.h"
 
-void View::updateViewMatrix() {
+void View::scale(float scaleFactor) {
+    size.x *= scaleFactor;
+    size.y = size.x * windowSize.y / windowSize.x;
+}
+
+void View::limitZoom(MapVec previousCenter, MapVec previousSize, float scaleFactor, MapVec zoomCenter) {
+    MapVec boundingBoxLeftTop;
+    MapVec boundingBoxRightBottom;
+    boundingBox(boundingBoxLeftTop, boundingBoxRightBottom);
+    if (boundingBoxRightBottom.x - boundingBoxLeftTop.x > 2 || boundingBoxLeftTop.y - boundingBoxRightBottom.y > 2) {
+        center = previousCenter;
+        size = previousSize;
+        auto negInf = -std::numeric_limits<float>::infinity();
+        scaleFactor *= std::min(
+                std::nextafterf(2 / (boundingBoxRightBottom.x - boundingBoxLeftTop.x), negInf),
+                std::nextafterf(2 / (boundingBoxLeftTop.y - boundingBoxRightBottom.y), negInf)
+        );
+
+        center = scaleFactor * (center - zoomCenter) + zoomCenter;
+        scale(scaleFactor);
+        calculateWindowToMapMatrix();
+    }
+}
+
+void View::limitTranslation() {
+    MapVec boundingBoxLeftTop;
+    MapVec boundingBoxRightBottom;
+    boundingBox(boundingBoxLeftTop, boundingBoxRightBottom);
+    if (boundingBoxLeftTop.x < -1) {
+        center.x += -1 - boundingBoxLeftTop.x;
+    }
+    if (boundingBoxRightBottom.x > 1) {
+        center.x += 1 - boundingBoxRightBottom.x;
+    }
+    if (boundingBoxRightBottom.y < -1) {
+        center.y += -1 - boundingBoxRightBottom.y;
+    }
+    if (boundingBoxLeftTop.y > 1) {
+        center.y += 1 - boundingBoxLeftTop.y;
+    }
+}
+
+void View::boundingBox(MapVec& boundingBoxLeftTop, MapVec& boundingBoxRightBottom) const {
+    const auto mapCoords = windowToMapMatrix * glm::mat4(
+            glm::vec4(0, 0, 0, 1),
+            glm::vec4(windowSize.x, 0, 0, 1),
+            glm::vec4(0, windowSize.y, 0, 1),
+            glm::vec4(windowSize.x, windowSize.y, 0, 1)
+    );
+    const MapVec mapTopLeft = glm::column(mapCoords, 0).xy;
+    const MapVec mapTopRight = glm::column(mapCoords, 1).xy;
+    const MapVec mapBottomLeft = glm::column(mapCoords, 2).xy;
+    const MapVec mapBottomRight = glm::column(mapCoords, 3).xy;
+    const std::array<MapVec, 4> viewCorners = {mapTopLeft, mapTopRight, mapBottomLeft, mapBottomRight};
+    boundingBoxLeftTop = MapVec(1, -1);
+    boundingBoxRightBottom = MapVec(-1, 1);
+    for (auto viewCorner: viewCorners) {
+        boundingBoxLeftTop.x = std::min(boundingBoxLeftTop.x, viewCorner.x);
+        boundingBoxLeftTop.y = std::max(boundingBoxLeftTop.y, viewCorner.y);
+        boundingBoxRightBottom.x = std::max(boundingBoxRightBottom.x, viewCorner.x);
+        boundingBoxRightBottom.y = std::min(boundingBoxRightBottom.y, viewCorner.y);
+    }
+}
+
+void View::calculateViewMatrix() {
     viewMatrix = glm::mat4(1);
     viewMatrix = glm::scale(viewMatrix, glm::vec3(2 / size.x, -2 / size.y, 1));
     viewMatrix = glm::rotate(viewMatrix, angle, glm::vec3(0, 0, 1));
     viewMatrix = glm::translate(viewMatrix, glm::vec3(-center, 0));
+}
 
+void View::calculateWindowToMapMatrix() {
     glm::mat4 windowToVulkan(1);
     windowToVulkan = glm::translate(windowToVulkan, glm::vec3(-1, -1, 0));
     windowToVulkan = glm::scale(windowToVulkan, glm::vec3(2 / windowSize.x, 2 / windowSize.y, 1));
@@ -22,17 +88,39 @@ void View::updateViewMatrix() {
     windowToMapMatrix = vulkanToMap * windowToVulkan;
 }
 
-void View::setAngle(float angle) {
-    this->angle = angle;
-    updateViewMatrix();
+void View::rotate(float deltaAngle, float winX, float winY) {
+    auto unchangedCenter = center;
+    auto z = glm::vec3(0, 0, 1);
+    MapVec map = (windowToMapMatrix * glm::vec4(winX, winY, 0, 1)).xy;
+    center -= map;
+    center = (glm::rotate(glm::mat4(1), -deltaAngle, z) * glm::vec4(center, 0, 1)).xy;
+    center += map;
+
+    this->angle += deltaAngle;
+
+    calculateWindowToMapMatrix();
+    map = (windowToMapMatrix * glm::vec4(winX, winY, 0, 1)).xy;
+    limitZoom( unchangedCenter, size, 1, map);
+    limitTranslation();
+
+    calculateWindowToMapMatrix();
+    calculateViewMatrix();
 }
 
 void View::zoom(float scaleFactor, float winX, float winY) {
     MapVec map = (windowToMapMatrix * glm::vec4(winX, winY, 0, 1)).xy;
+    auto unchangedCenter = center;
+    auto unchangedSize = size;
     center = scaleFactor * (center - map) + map;
-    size.x *= scaleFactor;
-    size.y = size.x * windowSize.y / windowSize.x;
-    updateViewMatrix();
+    scale(scaleFactor);
+
+    calculateWindowToMapMatrix();
+    map = (windowToMapMatrix * glm::vec4(winX, winY, 0, 1)).xy;
+    limitZoom( unchangedCenter, unchangedSize, scaleFactor, map);
+    limitTranslation();
+
+    calculateWindowToMapMatrix();
+    calculateViewMatrix();
 }
 
 void View::translate(float winDX, float winDY) {
@@ -41,34 +129,20 @@ void View::translate(float winDX, float winDY) {
             glm::vec4(winDX, winDY, 0, 1)
     );
     center = center + glm::column(r, 0).xy - glm::column(r, 1).xy;
-    updateViewMatrix();
+    calculateWindowToMapMatrix();
+    limitTranslation();
+
+    calculateWindowToMapMatrix();
+    calculateViewMatrix();
 }
 
 std::vector<TileVec> View::getTiles() {
-    // TODO: optimize
+    // TODO: optimize 45 deg angle
 
-    const auto mapCoords = windowToMapMatrix * glm::mat4x4(
-            glm::vec4(0, 0, 0, 1),
-            glm::vec4(windowSize.x, 0, 0, 1),
-            glm::vec4(0, windowSize.y, 0, 1),
-            glm::vec4(windowSize.x, windowSize.y, 0, 1)
-    );
-    const MapVec mapTopLeft = glm::column(mapCoords, 0).xy;
-    const MapVec mapTopRight = glm::column(mapCoords, 1).xy;
-    const MapVec mapBottomLeft = glm::column(mapCoords, 2).xy;
-    const MapVec mapBottomRight = glm::column(mapCoords, 3).xy;
-    const std::array<MapVec, 4> viewCorners = {mapTopLeft, mapTopRight, mapBottomLeft, mapBottomRight};
-
-    MapVec boundingBoxLeftTop(1, -1);
-    MapVec boundingBoxRightBottom(-1, 1);
-    for (auto viewCorner: viewCorners) {
-        boundingBoxLeftTop.x = std::min(boundingBoxLeftTop.x, viewCorner.x);
-        boundingBoxLeftTop.y = std::max(boundingBoxLeftTop.y, viewCorner.y);
-        boundingBoxRightBottom.x = std::max(boundingBoxRightBottom.x, viewCorner.x);
-        boundingBoxRightBottom.y = std::min(boundingBoxRightBottom.y, viewCorner.y);
-    }
+    MapVec boundingBoxLeftTop;
+    MapVec boundingBoxRightBottom;
+    boundingBox(boundingBoxLeftTop, boundingBoxRightBottom);
     MapVec maxDiffVec(boundingBoxRightBottom.x - boundingBoxLeftTop.x, boundingBoxLeftTop.y - boundingBoxRightBottom.y);
-
 
     double pixels;
     double maxDiff;
@@ -105,19 +179,22 @@ std::vector<TileVec> View::getTiles() {
         tileHorPos = glm::vec2(0, 0);
         for (int i = 0; i < hCount; i++) {
             auto tilePos = boundingBoxLeftTop + tileHorPos + tileVerPos;
-            double column = round((tilePos.x + 1) / 2 * tilesPerDimensionInMap);
-            double row = round((tilePos.y - 1) / -2 * tilesPerDimensionInMap);
-            tilePos = MapVec(
-                    static_cast<float>(column / tilesPerDimensionInMap * 2.f - 1.f),
-                    static_cast<float>(row / tilesPerDimensionInMap * -2.f + 1.f)
-            );
+            double column = floor((tilePos.x + 1) / 2 * tilesPerDimensionInMap);
+            double row = floor((tilePos.y - 1) / -2 * tilesPerDimensionInMap);
+            if (column >= 0 && row >= 0 && column < (1 << layer) && row < (1 << layer)) {
+                tilePos = MapVec(
+                        static_cast<float>(column / tilesPerDimensionInMap * 2.f - 1.f + tileSide / 2),
+                        static_cast<float>(row / tilesPerDimensionInMap * -2.f + 1.f - tileSide / 2)
+                );
 
-            output.push_back({
-                                     tilePos,
-                                     tileSide,
-                                     static_cast<uint32_t>(row),
-                                     static_cast<uint32_t>(column)
-                             });
+                output.push_back({
+                                         tilePos,
+                                         tileSide,
+                                         static_cast<uint32_t>(row),
+                                         static_cast<uint32_t>(column)
+                                 });
+            }
+
             tileHorPos.x += tileSide;
         }
         tileVerPos.y -= tileSide;
@@ -136,5 +213,9 @@ View::View(
 )
         : center(cx, cy), angle(angle), size(width, width * windowHeight / windowWidth),
           windowSize(windowWidth, windowHeight) {
-    updateViewMatrix();
+    calculateWindowToMapMatrix();
+    limitZoom( center, size, 1, center);
+    limitTranslation();
+    calculateViewMatrix();
+    calculateWindowToMapMatrix();
 }
