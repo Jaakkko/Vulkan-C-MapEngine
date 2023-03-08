@@ -5,8 +5,11 @@
 #include "View.h"
 
 void View::scale(float scaleFactor) {
+    auto size = transformation.size.get();
+    auto windowSize = transformation.windowSize.get();
     size.x *= scaleFactor;
     size.y = size.x * windowSize.y / windowSize.x;
+    transformation.size = size;
 }
 
 void View::limitZoom(MapVec previousCenter, MapVec previousSize, float scaleFactor, MapVec zoomCenter) {
@@ -14,21 +17,20 @@ void View::limitZoom(MapVec previousCenter, MapVec previousSize, float scaleFact
     MapVec boundingBoxRightBottom;
     boundingBox(boundingBoxLeftTop, boundingBoxRightBottom);
     if (boundingBoxRightBottom.x - boundingBoxLeftTop.x > 2 || boundingBoxLeftTop.y - boundingBoxRightBottom.y > 2) {
-        center = previousCenter;
-        size = previousSize;
         auto negInf = -std::numeric_limits<float>::infinity();
         scaleFactor *= std::min(
                 std::nextafterf(2 / (boundingBoxRightBottom.x - boundingBoxLeftTop.x), negInf),
                 std::nextafterf(2 / (boundingBoxLeftTop.y - boundingBoxRightBottom.y), negInf)
         );
 
-        center = scaleFactor * (center - zoomCenter) + zoomCenter;
+        transformation.center = scaleFactor * (previousCenter - zoomCenter) + zoomCenter;
+        transformation.size = previousSize;
         scale(scaleFactor);
-        calculateWindowToMapMatrix();
     }
 }
 
 void View::limitTranslation() {
+    auto center = transformation.center.get();
     MapVec boundingBoxLeftTop;
     MapVec boundingBoxRightBottom;
     boundingBox(boundingBoxLeftTop, boundingBoxRightBottom);
@@ -44,10 +46,12 @@ void View::limitTranslation() {
     if (boundingBoxLeftTop.y > 1) {
         center.y += 1 - boundingBoxLeftTop.y;
     }
+    transformation.center = center;
 }
 
-void View::boundingBox(MapVec& boundingBoxLeftTop, MapVec& boundingBoxRightBottom) const {
-    const auto mapCoords = windowToMapMatrix * glm::mat4(
+void View::boundingBox(MapVec &boundingBoxLeftTop, MapVec &boundingBoxRightBottom) {
+    auto windowSize = transformation.windowSize.get();
+    const auto mapCoords = transformation.getWindowToMapMatrix() * glm::mat4(
             glm::vec4(0, 0, 0, 1),
             glm::vec4(windowSize.x, 0, 0, 1),
             glm::vec4(0, windowSize.y, 0, 1),
@@ -68,72 +72,41 @@ void View::boundingBox(MapVec& boundingBoxLeftTop, MapVec& boundingBoxRightBotto
     }
 }
 
-void View::calculateViewMatrix() {
-    viewMatrix = glm::mat4(1);
-    viewMatrix = glm::scale(viewMatrix, glm::vec3(2 / size.x, -2 / size.y, 1));
-    viewMatrix = glm::rotate(viewMatrix, angle, glm::vec3(0, 0, 1));
-    viewMatrix = glm::translate(viewMatrix, glm::vec3(-center, 0));
-}
-
-void View::calculateWindowToMapMatrix() {
-    glm::mat4 windowToVulkan(1);
-    windowToVulkan = glm::translate(windowToVulkan, glm::vec3(-1, -1, 0));
-    windowToVulkan = glm::scale(windowToVulkan, glm::vec3(2 / windowSize.x, 2 / windowSize.y, 1));
-
-    glm::mat4 vulkanToMap(1);
-    vulkanToMap = glm::translate(vulkanToMap, glm::vec3(center, 0));
-    vulkanToMap = glm::rotate(vulkanToMap, -angle, glm::vec3(0, 0, 1));
-    vulkanToMap = glm::scale(vulkanToMap, glm::vec3(size.x / 2, -size.y / 2, 1));
-
-    windowToMapMatrix = vulkanToMap * windowToVulkan;
-}
-
 void View::rotate(float deltaAngle, float winX, float winY) {
+    auto center = transformation.center.get();
     auto unchangedCenter = center;
     auto z = glm::vec3(0, 0, 1);
-    MapVec map = (windowToMapMatrix * glm::vec4(winX, winY, 0, 1)).xy;
+    MapVec map = (transformation.getWindowToMapMatrix() * glm::vec4(winX, winY, 0, 1)).xy;
     center -= map;
     center = (glm::rotate(glm::mat4(1), -deltaAngle, z) * glm::vec4(center, 0, 1)).xy;
     center += map;
+    transformation.center = center;
+    transformation.angle += deltaAngle;
 
-    this->angle += deltaAngle;
-
-    calculateWindowToMapMatrix();
-    map = (windowToMapMatrix * glm::vec4(winX, winY, 0, 1)).xy;
-    limitZoom( unchangedCenter, size, 1, map);
+    map = (transformation.getWindowToMapMatrix() * glm::vec4(winX, winY, 0, 1)).xy;
+    limitZoom(unchangedCenter, transformation.size.get(), 1, map);
     limitTranslation();
-
-    calculateWindowToMapMatrix();
-    calculateViewMatrix();
 }
 
 void View::zoom(float scaleFactor, float winX, float winY) {
-    MapVec map = (windowToMapMatrix * glm::vec4(winX, winY, 0, 1)).xy;
-    auto unchangedCenter = center;
-    auto unchangedSize = size;
-    center = scaleFactor * (center - map) + map;
+    MapVec map = (transformation.getWindowToMapMatrix() * glm::vec4(winX, winY, 0, 1)).xy;
+    auto unchangedCenter = transformation.center.get();
+    auto unchangedSize = transformation.size.get();
+    transformation.center = scaleFactor * (unchangedCenter - map) + map;
     scale(scaleFactor);
 
-    calculateWindowToMapMatrix();
-    map = (windowToMapMatrix * glm::vec4(winX, winY, 0, 1)).xy;
-    limitZoom( unchangedCenter, unchangedSize, scaleFactor, map);
+    map = (transformation.getWindowToMapMatrix() * glm::vec4(winX, winY, 0, 1)).xy;
+    limitZoom(unchangedCenter, unchangedSize, scaleFactor, map);
     limitTranslation();
-
-    calculateWindowToMapMatrix();
-    calculateViewMatrix();
 }
 
 void View::translate(float winDX, float winDY) {
-    auto r = windowToMapMatrix * glm::mat2x4(
+    auto r = transformation.getWindowToMapMatrix() * glm::mat2x4(
             glm::vec4(0, 0, 0, 1),
             glm::vec4(winDX, winDY, 0, 1)
     );
-    center = center + glm::column(r, 0).xy - glm::column(r, 1).xy;
-    calculateWindowToMapMatrix();
+    transformation.center += glm::column(r, 0).xy - glm::column(r, 1).xy;
     limitTranslation();
-
-    calculateWindowToMapMatrix();
-    calculateViewMatrix();
 }
 
 std::vector<TileVec> View::getTiles() {
@@ -156,9 +129,10 @@ std::vector<TileVec> View::getTiles() {
         }
 
         glm::mat4 vulkanToWindow(1);
+        auto windowSize = transformation.windowSize.get();
         vulkanToWindow = glm::scale(vulkanToWindow, glm::vec3(windowSize.x / 2, windowSize.y / 2, 1));
         vulkanToWindow = glm::translate(vulkanToWindow, glm::vec3(1, 1, 0));
-        auto r = vulkanToWindow * viewMatrix * glm::mat2x4(
+        auto r = vulkanToWindow * transformation.getViewMatrix() * glm::mat2x4(
                 glm::vec4(maxDiffVec, 0, 1),
                 glm::vec4(0, 0, 0, 1)
         );
@@ -211,11 +185,51 @@ View::View(
         float windowWidth,
         float windowHeight
 )
-        : center(cx, cy), angle(angle), size(width, width * windowHeight / windowWidth),
-          windowSize(windowWidth, windowHeight) {
-    calculateWindowToMapMatrix();
-    limitZoom( center, size, 1, center);
+        : transformation(cx, cy, angle, width, windowWidth, windowHeight) {
+    limitZoom(transformation.center.get(), transformation.size.get(), 1, transformation.center.get());
     limitTranslation();
-    calculateViewMatrix();
-    calculateWindowToMapMatrix();
+}
+
+void View::Transformation::calculateWindowToMapMatrix() {
+    glm::mat4 windowToVulkan(1);
+    windowToVulkan = glm::translate(windowToVulkan, glm::vec3(-1, -1, 0));
+    windowToVulkan = glm::scale(windowToVulkan, glm::vec3(2 / windowSize.get().x, 2 / windowSize.get().y, 1));
+
+    glm::mat4 vulkanToMap(1);
+    vulkanToMap = glm::translate(vulkanToMap, glm::vec3(center.get(), 0));
+    vulkanToMap = glm::rotate(vulkanToMap, -angle.get(), glm::vec3(0, 0, 1));
+    vulkanToMap = glm::scale(vulkanToMap, glm::vec3(size.get().x / 2, -size.get().y / 2, 1));
+
+    windowToMapMatrix = vulkanToMap * windowToVulkan;
+}
+
+void View::Transformation::calculateViewMatrix() {
+    viewMatrix = glm::mat4(1);
+    viewMatrix = glm::scale(viewMatrix, glm::vec3(2 / size.get().x, -2 / size.get().y, 1));
+    viewMatrix = glm::rotate(viewMatrix, angle.get(), glm::vec3(0, 0, 1));
+    viewMatrix = glm::translate(viewMatrix, glm::vec3(-center.get(), 0));
+}
+
+const glm::mat4 &View::Transformation::getWindowToMapMatrix() {
+    if (winToMapMatrixDirty) {
+        calculateWindowToMapMatrix();
+        winToMapMatrixDirty = false;
+    }
+    return windowToMapMatrix;
+}
+
+const glm::mat4 &View::Transformation::getViewMatrix() {
+    if (viewMatrixDirty) {
+        calculateViewMatrix();
+        viewMatrixDirty = false;
+    }
+    return viewMatrix;
+}
+
+View::Transformation::Transformation(float cx, float cy, float angle, float width, float windowWidth, float windowHeight) :
+        center{MapVec(cx, cy), winToMapMatrixDirty, viewMatrixDirty},
+        angle{angle, winToMapMatrixDirty, viewMatrixDirty},
+        size{MapVec(width, width * windowHeight / windowWidth), winToMapMatrixDirty, viewMatrixDirty},
+        windowSize{WindowVec(windowWidth, windowHeight), winToMapMatrixDirty, viewMatrixDirty} {
+
 }

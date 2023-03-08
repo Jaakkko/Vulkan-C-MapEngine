@@ -25,25 +25,73 @@ struct TileVec {
 
 class View {
 private:
-    MapVec center;
-    float angle;
-    MapVec size; // zoom
-    WindowVec windowSize;
-
-    // map coord to vulkan coord
-    glm::mat4 viewMatrix{};
-
-    // window coord to map coord
-    glm::mat4 windowToMapMatrix{};
-
     void scale(float scaleFactor);
-    void boundingBox(MapVec& boundingBoxLeftTop, MapVec& boundingBoxRightBottom) const;
 
-    void calculateViewMatrix();
-    void calculateWindowToMapMatrix();
+    void boundingBox(MapVec &boundingBoxLeftTop, MapVec &boundingBoxRightBottom);
 
     void limitZoom(MapVec previousCenter, MapVec previousSize, float scaleFactor, MapVec zoomCenter);
+
     void limitTranslation();
+
+    struct Transformation {
+    private:
+        template<typename T>
+        struct Field {
+            T value;
+            bool& winToMapMatrixDirty;
+            bool& viewMatrixDirty;
+
+            Field& operator=(const T& other) {
+                value = other;
+                winToMapMatrixDirty = true;
+                viewMatrixDirty = true;
+                return *this;
+            }
+
+            Field& operator+=(const T& other) {
+                value += other;
+                winToMapMatrixDirty = true;
+                viewMatrixDirty = true;
+                return *this;
+            }
+
+            T get() {return value;}
+        };
+
+
+        // map coord to vulkan coord
+        glm::mat4 viewMatrix{};
+
+        // window coord to map coord
+        glm::mat4 windowToMapMatrix{};
+
+        void calculateWindowToMapMatrix();
+
+        void calculateViewMatrix();
+
+        bool winToMapMatrixDirty = true;
+        bool viewMatrixDirty = true;
+    public:
+
+
+        const glm::mat4 &getWindowToMapMatrix();
+
+        const glm::mat4 &getViewMatrix();
+
+        Field<MapVec> center;
+        Field<float> angle;
+        Field<MapVec> size; // zoom
+        Field<WindowVec> windowSize;
+
+        Transformation(
+                float cx,
+                float cy,
+                float angle,
+                float width,
+                float windowWidth,
+                float windowHeight
+        );
+    } transformation;
 
 public:
     /**
@@ -71,11 +119,13 @@ public:
     );
 
     void rotate(float deltaAngle, float winX, float winY);
+
     void zoom(float scaleFactor, float winX, float winY);
+
     void translate(float winDX, float winDY);
 
-    [[nodiscard]] const glm::mat4 &getViewMatrix() const {
-        return this->viewMatrix;
+    const glm::mat4 &getViewMatrix() {
+        return transformation.getViewMatrix();
     };
 
     std::vector<TileVec> getTiles();
